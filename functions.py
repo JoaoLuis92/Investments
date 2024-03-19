@@ -1,4 +1,7 @@
 # FINANCIAL INDICATORS
+# I need to separate this between functions to compute the indicators and functions to check the signals.
+# for example, check trend signal, check oscillator signal, etc, which make use of the financial indicators!
+
 
 # Simple moving average
 
