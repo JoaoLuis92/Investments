@@ -91,7 +91,7 @@ def verify_market_trend():
 
     return uptrend, downtrend
 
-# Verifies is the market is overbought or oversold using the RSI stochastic indicators
+# Verifies is the market is overbought or oversold using the stochastic indicators
 
 def verify_market_stochastic():
 
@@ -154,7 +154,7 @@ def plot_market_conditions():
     plt.legend()
     plt.show()
 
-# Plots the RSI indicator of the SPX
+# Plots the stochastic indicator of the SPX
 
     plt.figure(figsize=(10, 5))
     plt.plot(spx_df.tail(30)["Fast K"], 'k-', label='Fast %K')
@@ -189,9 +189,9 @@ def exponential_moving_average(df, period):
 
     df["EMA"+str(period)] = df['Close'].ewm(span = period).mean()
 
-# Computes the full stochastic indicator (RSI) for the given periods
+# Computes the full stochastic indicator for the given periods
 
-def full_stochastic(df, fk_period, sk_period, sd_period):
+def full_stochastic(df, fk_period = 5, sk_period = 5, sd_period = 3):
 
     fast_k_list = []
 
@@ -217,6 +217,64 @@ def full_stochastic(df, fk_period, sk_period, sd_period):
     df["Fast K"] = fast_k_list
     df["Slow K"] = df["Fast K"].rolling(sk_period).mean()
     df["Slow D"] = df["Slow K"].rolling(sd_period).mean()
+
+# Computes the Moving Average Convergence-Divergence indicator (MACD) for the given periods
+
+def moving_average_convergence_divergence(df, macd_period_1 = 12, macd_period_2 = 26, signal_period = 9):
+
+    exponential_moving_average(df, macd_period_1)
+    exponential_moving_average(df, macd_period_2)
+
+    df["MACD"] = df["EMA" + str(macd_period_1)] - df["EMA" + str(macd_period_2)]
+    df["Signal"] = (df['MACD']).ewm(span = signal_period).mean()
+
+    df = df.drop(columns = ["EMA" + str(macd_period_1), "EMA" + str(macd_period_2)])
+
+# Checks if the trend of the stock is going upwards or downwards
+
+def check_trend(df):
+
+    for period in [20, 40, 100, 200]:
+        simple_moving_average(df, period)
+
+    uptrend = (df.tail(1)["SMA20"] > df.tail(1)["SMA40"]).bool() and (df.tail(1)["SMA40"] > df.tail(1)["SMA100"]).bool() and (df.tail(1)["SMA100"] > df.tail(1)["SMA200"]).bool()
+    downtrend = (df.tail(1)["SMA20"] < df.tail(1)["SMA40"]).bool() and (df.tail(1)["SMA40"] < df.tail(1)["SMA100"]).bool() and (df.tail(1)["SMA100"] < df.tail(1)["SMA200"]).bool()
+
+    return uptrend, downtrend
+
+# Checks if the stock price is overbought/oversold based on the stochastic indicator
+
+def check_stochastic(df, fk_period = 5, sk_period = 5, sd_period = 3):
+
+    full_stochastic(df, fk_period, sk_period, sd_period)
+
+    oversold = (df.tail(1)["Fast K"] < 30).bool() and (df.tail(1)["Slow K"] < 30).bool()
+    overbought = (df.tail(1)["Fast K"] > 70).bool() and (df.tail(1)["Slow K"] > 70).bool()
+
+    return oversold, overbought
+
+# Checks if the MACD indicator is bullish or bearish
+
+def check_MACD(df, macd_period_1 = 12, macd_period_2 = 26, signal_period = 9, crossover = False):
+
+    moving_average_convergence_divergence(df, macd_period_1, macd_period_2, signal_period)
+
+    macd_bullish = (df.tail(1)["MACD"] > df.tail(1)["Signal"]).bool()
+    macd_bearish = (df.tail(1)["MACD"] < df.tail(1)["Signal"]).bool()
+
+    if crossover:
+
+        bullish_cross = macd_bullish and df.tail(2).iloc[0]["MACD"] < df.tail(2).iloc[0]["Signal"]
+        bearish_cross = macd_bearish and df.tail(2).iloc[0]["MACD"] > df.tail(2).iloc[0]["Signal"]
+
+        return bullish_cross, bearish_cross
+
+    else:
+
+        return macd_bullish, macd_bearish
+
+
+
 
 ########################
 # CANDLESTICK PATTERNS #
@@ -538,3 +596,64 @@ def pattern_bearish_engulfing(df, confirmation=True):
     else:
 
         return requirement_1 and requirement_2 and requirement_3 and requirement_4
+
+######################
+# STRATEGY SCREENERS #
+######################
+
+# These are the functions that filter through lists of tickers with the objective
+# of finding which stocks currently satisfy a given set of requirements. Each
+# screener follows its own rules to filter through the stocks.
+
+# Screeners for a basic strategy with four indicators: trend, stochastic, MACD, and candlestick pattern
+
+def screener_basic_long(tickers):
+
+    signal_list = []
+
+    for ticker in tickers:
+
+            try:
+                df_ticker = yf.Ticker(ticker).history(period="200d").drop(["Dividends","Stock Splits"], axis = 1)
+
+                trend_signal, _ = check_trend(df_ticker)
+                #stochastic_signal, _ = check_stochastic(df_ticker, 5, 5, 3)
+                macd_signal, _ = check_MACD(df_ticker, 12, 26, 9, False)
+                #pattern_signal = detect_bullish_pattern(df_ticker, confirm = True)
+
+                #signal = trend_signal and stochastic_signal and macd_signal and pattern_signal
+
+                signal = trend_signal and macd_signal
+
+                if signal:
+                    signal_list.append(ticker)
+
+            except:
+                continue
+
+    return signal_list
+
+def screener_basic_short(tickers):
+
+    signal_list = []
+
+    for ticker in tickers:
+
+            try:
+                df_ticker = yf.Ticker(ticker).history(period="200d").drop(["Dividends","Stock Splits"], axis = 1)
+
+                _, trend_signal = check_trend(df_ticker)
+                #_, stochastic_signal = check_stochastic(df_ticker, 5, 5, 3)
+                _, macd_signal = check_MACD(df_ticker, 12, 26, 9, False)
+                #pattern_signal = detect_bearish_pattern(df_ticker, confirm = True)
+
+                #signal = trend_signal and stochastic_signal and macd_signal and pattern_signal
+                signal = trend_signal and macd_signal
+
+                if signal:
+                    signal_list.append(ticker)
+
+            except:
+                continue
+
+    return signal_list
