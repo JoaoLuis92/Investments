@@ -1,28 +1,51 @@
+#####################
+# NECESSARY IMPORTS #
+#####################
+
 import numpy as np
 import yfinance as yf
 import pandas as pd
 import matplotlib.pyplot as plt
 
-#####################
-# GENERAL FUNCTIONS #
-#####################
+################################################################################
+# GENERAL FUNCTIONS
+#
+#
+# These are the functions necessary for importaing data, filtering through
+# stock lists, and analyzing the general behavior of the market to help
+# deciding which strategies are the most adequate at a given time.
+################################################################################
 
-# These are the functions necessary for importaing data, filtering through stock
-# lists, and analyzing the general behavior of the market to help deciding which
-# strategies are the most adequate at a given time.
+################################################################################
+# Description: Imports the tickers from the Nasdaq and New York Stock Exchange
+# from data files and returns a list containing these tickers
+#
+# Inputs: None
+#
+# Outputs:
+# list_of_tickers: list containing tickers
+################################################################################
 
-# Imports the tickers from the Nasdaq and New York Stock Exchange from data files and returns them in a list
-
-def import_stock_tickers():
+def import_stock_tickers() -> list:
 
     tickers_nasdaq = pd.read_csv("tickers_nasdaq.csv").Ticker.to_list()
     tickers_nyse = pd.read_csv("tickers_nyse.csv").Ticker.to_list()
 
     return tickers_nasdaq + tickers_nyse
 
-# Filters through a list of tickers and returns a list of the tickers corresponding to high volume stocks
+################################################################################
+# Description: Filters through a list of stocks to select those with a volume
+# larger than a certain threshold of interest
+#
+# Inputs:
+# tickers: list of tickers to be filtered
+# volume: minimum volume for a high volume stock
+#
+# Outputs:
+# high_volume_list: list containing the tickers of high volume stocks
+################################################################################
 
-def produce_high_volume_list(tickers, volume = 200000):
+def produce_high_volume_list(tickers: list, volume: int = 200000) -> list:
 
     high_volume_list = []
 
@@ -37,15 +60,36 @@ def produce_high_volume_list(tickers, volume = 200000):
 
     return high_volume_list
 
-# Calculates the relative change in the price of a given stock
+################################################################################
+# Description: Computes the relative change of the closing price of a stock in
+# a given time period of interest
+#
+# Inputs:
+# df: dataframe containing the stock data
+# period: time interval to be analyzed
+#
+# Outputs:
+# relative_change: value of the relative change of the stock
+################################################################################
 
-def stock_relative_change(df, period):
+def stock_relative_change(df: pd.core.frame.DataFrame, period: int) -> float:
 
     return (df.tail(period).iloc[period-1].Close - df.tail(period).iloc[0].Close) / df.tail(period).iloc[0].Close
 
-# Filters through a list of tickers and returns two lists corresponding to strong and weak stocks in comparison with the S&P500
+################################################################################
+# Description: Filters through a list of tickers, compares the relative change
+# of each ticker with the relative change of the S&P500, and returns two lists
+# containing the tickers that are stronger and weaker with respect to the S&P500
+#
+# Inputs:
+# tickers: list of tickers to be filtered
+# period: time interval to be analyzed
+#
+# Outputs:
+# relative_change: value of the relative change of the stock
+################################################################################
 
-def produce_relative_strength_lists(tickers, period = 30):
+def produce_relative_strength_lists(tickers: list, period: int = 30) -> (list, list):
 
     strong_stocks_list = []
     weak_stocks_list = []
@@ -68,17 +112,27 @@ def produce_relative_strength_lists(tickers, period = 30):
 
     return strong_stocks_list, weak_stocks_list
 
-# Verifies if the market is currently on an uptrend or a downtrend using moving averaged
+################################################################################
+# Description: Verifies if the market is currently on an uptrend or downtrend
+# by comparing moving averages with different periods and returns two boolean
+# variables describing the trend
+#
+# Inputs: None
+#
+# Outputs:
+# uptrend: boolean variable that is true if the market is uptrending
+# downtrend: boolean variable that is true if the market is downtrending
+################################################################################
 
-def verify_market_trend():
+def verify_market_trend() -> (bool, bool):
 
     spx_df = yf.Ticker("^GSPC").history(period="200d").drop(["Dividends","Stock Splits"], axis = 1)
 
     for period in [50, 100, 200]:
-        simple_moving_average(spx_df, period)
+        spx_df = simple_moving_average(spx_df, period)
 
     for period in [20, 40]:
-        exponential_moving_average(spx_df, period)
+        spx_df = exponential_moving_average(spx_df, period)
 
     short_uptrend = (spx_df.tail(1).Close > spx_df.tail(1).EMA20).bool() and (spx_df.tail(1).EMA20 > spx_df.tail(1).EMA40).bool()
     short_downtrend = (spx_df.tail(1).Close < spx_df.tail(1).EMA20).bool() and (spx_df.tail(1).EMA20 < spx_df.tail(1).EMA40).bool()
@@ -91,22 +145,45 @@ def verify_market_trend():
 
     return uptrend, downtrend
 
-# Verifies is the market is overbought or oversold using the stochastic indicators
+################################################################################
+# Description: Verifies if the market is currently oversold or overbought by
+# analyzing the full stochastic oscillator with periods 5, 3, 3
+#
+# Inputs: None
+#
+# Outputs:
+# oversold: boolean variable that is true if the market is oversold
+# overbought: boolean variable that is true if the market is overbought
+################################################################################
 
-def verify_market_stochastic():
+def verify_market_stochastic() -> (bool, bool):
 
     spx_df = yf.Ticker("^GSPC").history(period="200d").drop(["Dividends","Stock Splits"], axis = 1)
 
-    full_stochastic(spx_df,5,3,3)
+    spx_df = full_stochastic(spx_df,5,3,3)
 
     oversold = (spx_df.tail(1)["Fast K"] < 20).bool() and (spx_df.tail(1)["Slow K"] < 20).bool()
     overbought = (spx_df.tail(1)["Fast K"] > 80).bool() and (spx_df.tail(1)["Slow K"] > 80).bool()
 
     return oversold, overbought
 
-# Analyzes the market, prints the result, and returns a list of recommended stocks to Analyzes
+################################################################################
+# Description: Analyzes the market trend and the price status through the full
+# stochastic oscillator, informs the user which type of positions (long/short)
+# are recommended in the current market conditions, and returns a list that
+# contains either strong or weak stocks depending on the market being bullish
+# or bearish, respectively
+#
+# Inputs:
+# strong_stocks_list: list containing tickers of strong stocks
+# weak_stocks_list: list containing tickers of weak stocks
+#
+# Outputs:
+# market_bias: string containing either "Long" or "Short" describing market bias
+# stocks_list: list containing either strong or weak stocks depending on bias
+################################################################################
 
-def analyze_market(strong_stocks_list, weak_stocks_list):
+def analyze_market(strong_stocks_list: list, weak_stocks_list: list) -> (str, list):
 
     uptrend, downtrend = verify_market_trend()
     oversold, overbought = verify_market_stochastic()
@@ -126,21 +203,29 @@ def analyze_market(strong_stocks_list, weak_stocks_list):
         print("Market is currently indecisive.")
         return "Indecisive", []
 
-# Produces the plots of market trend and stockastic indicators
+################################################################################
+# Description: Produces two plots of the current market conditions, the first
+# showing the closing price alongside with four moving averages of interest, and
+# the second showing the fast K and slow K stochastic oscillators
+#
+# Inputs: None
+#
+# Outputs: None
+################################################################################
 
-def plot_market_conditions():
+def plot_market_conditions() -> None:
 
     spx_df = yf.Ticker("^GSPC").history(period="200d").drop(["Dividends","Stock Splits"], axis = 1)
 
     for period in [50, 100, 200]:
-        simple_moving_average(spx_df, period)
+        spx_df = simple_moving_average(spx_df, period)
 
     for period in [20, 40]:
-        exponential_moving_average(spx_df, period)
+        spx_df = exponential_moving_average(spx_df, period)
 
-    full_stochastic(spx_df,5,3,3)
+    spx_df = full_stochastic(spx_df,5,3,3)
 
-    # Plots the SPX and respective moving averages
+    # First plot: SPX and moving averages
 
     plt.figure(figsize=(10, 5))
     plt.plot(spx_df.tail(30).Close, 'k.-', label='S&P500')
@@ -154,7 +239,7 @@ def plot_market_conditions():
     plt.legend()
     plt.show()
 
-# Plots the stochastic indicator of the SPX
+    # Second plot: fast K and slow K stochastic
 
     plt.figure(figsize=(10, 5))
     plt.plot(spx_df.tail(30)["Fast K"], 'k-', label='Fast %K')
@@ -168,104 +253,192 @@ def plot_market_conditions():
     plt.legend()
     plt.show()
 
-########################
-# FINANCIAL INDICATORS #
-########################
+    return None
 
+################################################################################
+# FINANCIAL INDICATORS
+#
 # These are the functions necessary to process the data and compute the values
 # of different financial indicators. Furthermore, some of these functions are
 # used to apply the financial indicator to the data and verify is a signal has
 # been detected.
+################################################################################
 
-# Computes the simple moving average of a given period
+################################################################################
+# Description: Computes the simple or exponentially weighted moving average with
+# a given period of the data input
+#
+# Inputs:
+# df: dataframe containing stock data
+# period: time interval of the moving average
+#
+# Outputs:
+# df_work: dataframe with additional column with moving average
+################################################################################
 
-def simple_moving_average(df, period):
+def simple_moving_average(df: pd.core.frame.DataFrame, period: int) -> pd.core.frame.DataFrame:
 
-    df["SMA"+str(period)] = df["Close"].rolling(period).mean()
+    df_work = df.copy()
+    df_work["SMA"+str(period)] = df_work["Close"].rolling(period).mean()
 
-# Computes the exponential moving average of a given period
+    return df_work
 
-def exponential_moving_average(df, period):
+def exponential_moving_average(df: pd.core.frame.DataFrame, period: int) -> pd.core.frame.DataFrame:
 
-    df["EMA"+str(period)] = df['Close'].ewm(span = period).mean()
+    df_work = df.copy()
+    df_work["EMA"+str(period)] = df_work['Close'].ewm(span = period).mean()
 
-# Computes the full stochastic indicator for the given periods
+    return df_work
 
-def full_stochastic(df, fk_period = 5, sk_period = 5, sd_period = 3):
+################################################################################
+# Description: Computes the full stochastic oscillator with gien fast K, slow K
+# and slow D periods of the data input
+#
+# Inputs:
+# df: dataframe containing stock data
+# fk_period: time interval of fast K period
+# sk_period: time interval of slow K (fast D) period
+# sd_period: time interval of slow D period
+#
+# Outputs:
+# df_work: dataframe with additional columns with fast K, slow K, and slow D
+################################################################################
 
+def full_stochastic(df: pd.core.frame.DataFrame, fk_period: int = 5, sk_period: int = 5, sd_period: int = 3) -> pd.core.frame.DataFrame:
+
+    df_work = df.copy()
     fast_k_list = []
 
     for i in range(len(df)):
-        low = df.iloc[i]['Low']
-        high = df.iloc[i]['High']
+        low = df_work.iloc[i]['Low']
+        high = df_work.iloc[i]['High']
 
         if i >= fk_period:
 
             for n in range(fk_period):
 
-                if df.iloc[i-n]['High'] >= high:
-                    high = df.iloc[i-n]['High']
-                elif df.iloc[i-n]['Low'] < low:
-                    low = df.iloc[i-n]['Low']
+                if df_work.iloc[i-n]['High'] >= high:
+                    high = df_work.iloc[i-n]['High']
+                elif df_work.iloc[i-n]['Low'] < low:
+                    low = df_work.iloc[i-n]['Low']
         if high != low:
-            fast_k = 100 * (df.iloc[i]['Close'] - low) / (high - low)
+            fast_k = 100 * (df_work.iloc[i]['Close'] - low) / (high - low)
         else:
             fast_k = 0
 
         fast_k_list.append(fast_k)
 
-    df["Fast K"] = fast_k_list
-    df["Slow K"] = df["Fast K"].rolling(sk_period).mean()
-    df["Slow D"] = df["Slow K"].rolling(sd_period).mean()
+    df_work["Fast K"] = fast_k_list
+    df_work["Slow K"] = df_work["Fast K"].rolling(sk_period).mean()
+    df_work["Slow D"] = df_work["Slow K"].rolling(sd_period).mean()
 
-# Computes the Moving Average Convergence-Divergence indicator (MACD) for the given periods
+    return df_work
 
-def moving_average_convergence_divergence(df, macd_period_1 = 12, macd_period_2 = 26, signal_period = 9):
+################################################################################
+# Description: Computes the moving average convergence-divergence indicator with
+# the given time periods of the data input
+#
+# Inputs:
+# df: dataframe containing stock data
+# macd_period_1: time interval of first exponential moving average
+# macd_period_2: time interval of second exponential moving average
+# signal_period: time interval of moving average for signal
+#
+# Outputs:
+# df_work: dataframe with additional columns with MACD and signal values
+################################################################################
 
-    exponential_moving_average(df, macd_period_1)
-    exponential_moving_average(df, macd_period_2)
+def moving_average_convergence_divergence(df: pd.core.frame.DataFrame, macd_period_1: int = 12, macd_period_2: int = 26, signal_period: int = 9) -> pd.core.frame.DataFrame:
 
-    df["MACD"] = df["EMA" + str(macd_period_1)] - df["EMA" + str(macd_period_2)]
-    df["Signal"] = (df['MACD']).ewm(span = signal_period).mean()
+    df_work = df.copy()
 
-    df = df.drop(columns = ["EMA" + str(macd_period_1), "EMA" + str(macd_period_2)])
+    df_work = exponential_moving_average(df_work, macd_period_1)
+    df_work = exponential_moving_average(df_work, macd_period_2)
 
-# Checks if the trend of the stock is going upwards or downwards
+    df_work["MACD"] = df_work["EMA" + str(macd_period_1)] - df_work["EMA" + str(macd_period_2)]
+    df_work["Signal"] = (df_work['MACD']).ewm(span = signal_period).mean()
 
-def check_trend(df):
+    df_work = df_work.drop(columns = ["EMA" + str(macd_period_1), "EMA" + str(macd_period_2)])
+
+    return df_work
+
+################################################################################
+# Description: Verifies the current trend of the stock data given as input based
+# on the analysis of four major simple moving averages
+#
+# Inputs:
+# df: dataframe containing stock data
+#
+# Outputs:
+# uptrend: boolean variable that is true is the stock is uptrending
+# downtrend: boolean variable that is true is the stock is downtrending
+################################################################################
+
+def check_trend(df: pd.core.frame.DataFrame) -> (bool, bool):
+
+    df_work = df.copy()
 
     for period in [20, 40, 100, 200]:
-        simple_moving_average(df, period)
+        df_work = simple_moving_average(df_work, period)
 
-    uptrend = (df.tail(1)["SMA20"] > df.tail(1)["SMA40"]).bool() and (df.tail(1)["SMA40"] > df.tail(1)["SMA100"]).bool() and (df.tail(1)["SMA100"] > df.tail(1)["SMA200"]).bool()
-    downtrend = (df.tail(1)["SMA20"] < df.tail(1)["SMA40"]).bool() and (df.tail(1)["SMA40"] < df.tail(1)["SMA100"]).bool() and (df.tail(1)["SMA100"] < df.tail(1)["SMA200"]).bool()
+    uptrend = (df_work.tail(1)["SMA20"] > df_work.tail(1)["SMA40"]).bool() and (df_work.tail(1)["SMA40"] > df_work.tail(1)["SMA100"]).bool() and (df_work.tail(1)["SMA100"] > df_work.tail(1)["SMA200"]).bool()
+    downtrend = (df_work.tail(1)["SMA20"] < df_work.tail(1)["SMA40"]).bool() and (df_work.tail(1)["SMA40"] < df_work.tail(1)["SMA100"]).bool() and (df_work.tail(1)["SMA100"] < df_work.tail(1)["SMA200"]).bool()
 
     return uptrend, downtrend
 
-# Checks if the stock price is overbought/oversold based on the stochastic indicator
+################################################################################
+# Description: Verifies the current price status, i.e., oversold of overbought,
+# of the strock data input based on the full stochastic oscillator
+#
+# Inputs:
+# df: dataframe containing stock data
+# fk_period: time interval of fast K period
+# sk_period: time interval of slow K (fast D) period
+# sd_period: time interval of slow D period
+#
+# Outputs:
+# oversold: boolean variable that is true is the stock is oversold
+# overbought: boolean variable that is true is the stock is overbought
+################################################################################
 
-def check_stochastic(df, fk_period = 5, sk_period = 5, sd_period = 3):
+def check_stochastic(df: pd.core.frame.DataFrame, fk_period: int = 5, sk_period: int = 3, sd_period: int = 3) -> (bool, bool):
 
-    full_stochastic(df, fk_period, sk_period, sd_period)
+    df_work = df.copy()
+    df_work = full_stochastic(df_work, fk_period, sk_period, sd_period)
 
-    oversold = (df.tail(1)["Fast K"] < 30).bool() and (df.tail(1)["Slow K"] < 30).bool()
-    overbought = (df.tail(1)["Fast K"] > 70).bool() and (df.tail(1)["Slow K"] > 70).bool()
+    oversold = (df_work.tail(1)["Fast K"] < 30).bool() and (df_work.tail(1)["Slow K"] < 30).bool()
+    overbought = (df_work.tail(1)["Fast K"] > 70).bool() and (df_work.tail(1)["Slow K"] > 70).bool()
 
     return oversold, overbought
 
-# Checks if the MACD indicator is bullish or bearish
+################################################################################
+# Description: Verifies is the moving average convergence-divergence indicator
+# is currently indicating a bullish or bearish signal. Optionally, it checks if
+# a crossover has happened from the previous day
+#
+# Inputs:
+# df: dataframe containing stock data
+# macd_period_1: time interval of first exponential moving average
+# macd_period_2: time interval of second exponential moving average
+# signal_period: time interval of moving average for signal
+#
+# Outputs:
+# uptrend: boolean variable that is true is the stock is uptrending
+# downtrend: boolean variable that is true is the stock is downtrending
+################################################################################
 
-def check_MACD(df, macd_period_1 = 12, macd_period_2 = 26, signal_period = 9, crossover = False):
+def check_MACD(df: pd.core.frame.DataFrame, macd_period_1: int = 12, macd_period_2: int = 26, signal_period: int = 9, crossover: bool = False) -> (bool, bool):
 
-    moving_average_convergence_divergence(df, macd_period_1, macd_period_2, signal_period)
+    df_work = df.copy()
+    df_work = moving_average_convergence_divergence(df_work, macd_period_1, macd_period_2, signal_period)
 
-    macd_bullish = (df.tail(1)["MACD"] > df.tail(1)["Signal"]).bool()
-    macd_bearish = (df.tail(1)["MACD"] < df.tail(1)["Signal"]).bool()
+    macd_bullish = (df_work.tail(1)["MACD"] > df_work.tail(1)["Signal"]).bool()
+    macd_bearish = (df_work.tail(1)["MACD"] < df_work.tail(1)["Signal"]).bool()
 
     if crossover:
 
-        bullish_cross = macd_bullish and df.tail(2).iloc[0]["MACD"] < df.tail(2).iloc[0]["Signal"]
-        bearish_cross = macd_bearish and df.tail(2).iloc[0]["MACD"] > df.tail(2).iloc[0]["Signal"]
+        bullish_cross = macd_bullish and df_work.tail(2).iloc[0]["MACD"] < df_work.tail(2).iloc[0]["Signal"]
+        bearish_cross = macd_bearish and df_work.tail(2).iloc[0]["MACD"] > df_work.tail(2).iloc[0]["Signal"]
 
         return bullish_cross, bearish_cross
 
@@ -273,27 +446,47 @@ def check_MACD(df, macd_period_1 = 12, macd_period_2 = 26, signal_period = 9, cr
 
         return macd_bullish, macd_bearish
 
-
-
-
-########################
-# CANDLESTICK PATTERNS #
-########################
-
+################################################################################
+# CANDLESTICK PATTERNS
+#
 # These are the functions necesssary to process the data and verify if any
 # candlestick pattern has been detected. The confirmation argument is used to
 # guarantee that a candlestick with the expected behavior follows the pattern
+################################################################################
 
-# Computes the body and the range of the candlesticks
+################################################################################
+# Description: Computes the body and range of the candlesticks of the data
+# input
+#
+# Inputs:
+# df: dataframe containing stock data
+#
+# Outputs:
+# df_work: dataframe with additional columns containing body and range
+################################################################################
 
-def body_and_range(df):
+def body_and_range(df: pd.core.frame.DataFrame) -> pd.core.frame.DataFrame:
 
-    df["Body"] = np.absolute(df["Open"] - df["Close"])
-    df["Range"] = df["High"] - df["Low"]
+    df_work = df.copy()
 
-# Verifies if the bullish pattern has been confirmed by the following candlestick
+    df_work["Body"] = np.absolute(df_work["Open"] - df_work["Close"])
+    df_work["Range"] = df_work["High"] - df_work["Low"]
 
-def pattern_confirmation_bullish(df):
+    return df_work
+
+################################################################################
+# Description: Verifies if a confirmation candle, i.e., a candlestick with a
+# behavior following the prediction from a previous candlestick pattern, follows
+# immediately after the pattern has been detected
+#
+# Inputs:
+# df: dataframe containing stock data
+#
+# Outputs:
+# confirmation: boolean variable that is true if the pattern is confirmed
+################################################################################
+
+def pattern_confirmation_bullish(df: pd.core.frame.DataFrame) -> bool:
 
     confirmation_day = df.iloc[len(df)-1]
     last_pattern_day = df.iloc[len(df)-2]
@@ -304,9 +497,7 @@ def pattern_confirmation_bullish(df):
 
     return confirmation_1 and confirmation_2 and confirmation_3
 
-# Verifies if the bearish pattern has been confirmed by the following candlestick
-
-def pattern_confirmation_bearish(df):
+def pattern_confirmation_bearish(df: pd.core.frame.DataFrame) -> bool:
 
     confirmation_day = df.iloc[len(df)-1]
     last_pattern_day = df.iloc[len(df)-2]
@@ -317,9 +508,19 @@ def pattern_confirmation_bearish(df):
 
     return confirmation_1 and confirmation_2 and confirmation_3
 
-# Verifies if any of the bullish candlestick patterns has been detected
+################################################################################
+# Description: Verifies if any of the reversal candlestick patterns implemented
+# has been detected in the data input
+#
+# Inputs:
+# df: dataframe containing stock data
+# confirm: bool to include a verification of confirmation after the pattern
+#
+# Outputs:
+# signal: boolean variable that is true if a pattern has been detected
+################################################################################
 
-def detect_bullish_pattern(df, confirm=True):
+def detect_bullish_pattern(df: pd.core.frame.DataFrame, confirm: bool = True) -> bool:
 
     signal_1 = pattern_bullish_pinbar(df, confirmation=confirm)
     signal_2 = pattern_white_soldier(df, confirmation=confirm)
@@ -328,9 +529,7 @@ def detect_bullish_pattern(df, confirm=True):
 
     return signal_1 or signal_2 or signal_3 or signal_4
 
-# Verifies if any of the bearish candlestick patterns has been detected
-
-def detect_bearish_pattern(df, confirm=True):
+def detect_bearish_pattern(df: pd.core.frame.DataFrame, confirm: bool = True) -> bool:
 
     signal_1 = pattern_bearish_pinbar(df, confirmation=confirm)
     signal_2 = pattern_black_crow(df, confirmation=confirm)
@@ -339,14 +538,27 @@ def detect_bearish_pattern(df, confirm=True):
 
     return signal_1 or signal_2 or signal_3 or signal_4
 
-# The following functions analyze each of the candlestick patterns independently
+################################################################################
+# Description: Verifies if a given candlestick pattern has been detected in the
+# data input. The following candlestick patterns have been implemented:
+#
+## Bullish pinbar / Bearish pinbar
+## One white soldier / One black crow
+## Morning star / Evening star
+## Bullish engulfin / bearish engulfing
+#
+# Inputs:
+# df: dataframe containing stock data
+# confirm: bool to include a verification of confirmation after the pattern
+#
+# Outputs:
+# signal: boolean variable that is true if the pattern has been detected
+################################################################################
 
-## Bullish pinbar
-
-def pattern_bullish_pinbar(df, confirmation=True):
+def pattern_bullish_pinbar(df: pd.core.frame.DataFrame, confirmation: bool = True) -> bool:
 
     df_work = df.tail(2)
-    body_and_range(df_work)
+    df_work = body_and_range(df_work)
 
     if confirmation:
 
@@ -369,12 +581,10 @@ def pattern_bullish_pinbar(df, confirmation=True):
 
         return requirement_1 and requirement_2
 
-## Bearish pinbar
-
-def pattern_bearish_pinbar(df, confirmation=True):
+def pattern_bearish_pinbar(df: pd.core.frame.DataFrame, confirmation: bool = True) -> bool:
 
     df_work = df.tail(2)
-    body_and_range(df_work)
+    df_work = body_and_range(df_work)
 
     if confirmation:
 
@@ -397,9 +607,7 @@ def pattern_bearish_pinbar(df, confirmation=True):
 
         return requirement_1 and requirement_2
 
-## One white soldier
-
-def pattern_white_soldier(df, confirmation=True):
+def pattern_white_soldier(df: pd.core.frame.DataFrame, confirmation: bool = True) -> bool:
 
     df_work = df.tail(3)
 
@@ -429,9 +637,7 @@ def pattern_white_soldier(df, confirmation=True):
 
         return requirement_1 and requirement_2 and requirement_3 and requirement_4 and requirement_5
 
-## One black crow
-
-def pattern_black_crow(df, confirmation=True):
+def pattern_black_crow(df: pd.core.frame.DataFrame, confirmation: bool = True) -> bool:
 
     df_work = df.tail(3)
 
@@ -461,12 +667,10 @@ def pattern_black_crow(df, confirmation=True):
 
         return requirement_1 and requirement_2 and requirement_3 and requirement_4 and requirement_5
 
-## Morning star
-
-def pattern_morning_star(df, confirmation=True):
+def pattern_morning_star(df: pd.core.frame.DataFrame, confirmation: bool = True) -> bool:
 
     df_work = df.tail(4)
-    body_and_range(df_work)
+    df_work = body_and_range(df_work)
 
     if confirmation:
 
@@ -498,12 +702,10 @@ def pattern_morning_star(df, confirmation=True):
 
         return requirement_1 and requirement_2 and requirement_3 and requirement_4 and requirement_5 and requirement_6 and requirement_7
 
-## Evening star
-
-def pattern_evening_star(df, confirmation=True):
+def pattern_evening_star(df: pd.core.frame.DataFrame, confirmation: bool = True) -> bool:
 
     df_work = df.tail(4)
-    body_and_range(df_work)
+    df_work = body_and_range(df_work)
 
     if confirmation:
 
@@ -535,9 +737,7 @@ def pattern_evening_star(df, confirmation=True):
 
         return requirement_1 and requirement_2 and requirement_3 and requirement_4 and requirement_5 and requirement_6 and requirement_7
 
-## Bullish engulfing
-
-def pattern_bullish_engulfing(df, confirmation=True):
+def pattern_bullish_engulfing(df: pd.core.frame.DataFrame, confirmation: bool = True) -> bool:
 
     df_work = df.tail(3)
 
@@ -566,9 +766,7 @@ def pattern_bullish_engulfing(df, confirmation=True):
 
         return requirement_1 and requirement_2 and requirement_3 and requirement_4
 
-## Bearish engulfing
-
-def pattern_bearish_engulfing(df, confirmation=True):
+def pattern_bearish_engulfing(df: pd.core.frame.DataFrame, confirmation: bool = True) -> bool:
 
     df_work = df.tail(3)
 
@@ -597,17 +795,29 @@ def pattern_bearish_engulfing(df, confirmation=True):
 
         return requirement_1 and requirement_2 and requirement_3 and requirement_4
 
-######################
-# STRATEGY SCREENERS #
-######################
-
-# These are the functions that filter through lists of tickers with the objective
+################################################################################
+# STRATEGY SCREENERS
+#
+# These are the functions that filter through lists of tickers with the goal
 # of finding which stocks currently satisfy a given set of requirements. Each
 # screener follows its own rules to filter through the stocks.
+################################################################################
 
-# Screeners for a basic strategy with four indicators: trend, stochastic, MACD, and candlestick pattern
+################################################################################
+# Description: Filters through a list of stocks and verifies which satisfy a
+# given set of requirements that describe a trading strategy. The following
+# strategies have been implemented:
+#
+## Basic: trend, stochastic, MACD, and candlestick pattern
+#
+# Inputs:
+# tickers: list of tickers to be screened
+#
+# Outputs:
+# signal_list: list of tickers for which a signal has been detected
+################################################################################
 
-def screener_basic_long(tickers):
+def screener_basic_long(tickers: list) -> list:
 
     signal_list = []
 
@@ -617,13 +827,11 @@ def screener_basic_long(tickers):
                 df_ticker = yf.Ticker(ticker).history(period="200d").drop(["Dividends","Stock Splits"], axis = 1)
 
                 trend_signal, _ = check_trend(df_ticker)
-                #stochastic_signal, _ = check_stochastic(df_ticker, 5, 5, 3)
+                stochastic_signal, _ = check_stochastic(df_ticker, 5, 5, 3)
                 macd_signal, _ = check_MACD(df_ticker, 12, 26, 9, False)
-                #pattern_signal = detect_bullish_pattern(df_ticker, confirm = True)
+                pattern_signal = detect_bullish_pattern(df_ticker, confirm = True)
 
-                #signal = trend_signal and stochastic_signal and macd_signal and pattern_signal
-
-                signal = trend_signal and macd_signal
+                signal = trend_signal and stochastic_signal and macd_signal and pattern_signal
 
                 if signal:
                     signal_list.append(ticker)
@@ -633,7 +841,7 @@ def screener_basic_long(tickers):
 
     return signal_list
 
-def screener_basic_short(tickers):
+def screener_basic_short(tickers: list) -> list:
 
     signal_list = []
 
@@ -643,12 +851,11 @@ def screener_basic_short(tickers):
                 df_ticker = yf.Ticker(ticker).history(period="200d").drop(["Dividends","Stock Splits"], axis = 1)
 
                 _, trend_signal = check_trend(df_ticker)
-                #_, stochastic_signal = check_stochastic(df_ticker, 5, 5, 3)
+                _, stochastic_signal = check_stochastic(df_ticker, 5, 5, 3)
                 _, macd_signal = check_MACD(df_ticker, 12, 26, 9, False)
-                #pattern_signal = detect_bearish_pattern(df_ticker, confirm = True)
+                pattern_signal = detect_bearish_pattern(df_ticker, confirm = True)
 
-                #signal = trend_signal and stochastic_signal and macd_signal and pattern_signal
-                signal = trend_signal and macd_signal
+                signal = trend_signal and stochastic_signal and macd_signal and pattern_signal
 
                 if signal:
                     signal_list.append(ticker)
