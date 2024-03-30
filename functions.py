@@ -23,6 +23,7 @@ class Stock_lists():
     high_volume_stocks = []
     strong_stocks = []
     weak_stocks = []
+    screened_stocks = []
 
 ################################################################################
 # Description: Imports the tickers from the Nasdaq and New York Stock Exchange
@@ -439,15 +440,15 @@ def moving_average_convergence_divergence(df: pd.core.frame.DataFrame, macd_peri
 #
 # Inputs:
 # df: dataframe containing stock data
-# macd_period_1: time interval of first exponential moving average
-# macd_period_2: time interval of second exponential moving average
-# signal_period: time interval of moving average for signal
+# period: time interval to compute the ATR
 #
 # Outputs:
-# df_work: dataframe with additional columns with MACD and signal values
+# df_work: dataframe with additional columns with ATR
 ################################################################################
 
 def average_true_range(df: pd.core.frame.DataFrame, period: int = 14) -> pd.core.frame.DataFrame:
+
+    assert period > 0, f"Period {period} must be greater than zero"
 
     df_work = df.copy()
 
@@ -908,7 +909,7 @@ def pattern_bearish_engulfing(df: pd.core.frame.DataFrame, confirmation: bool = 
 # given set of requirements that describe a trading strategy. The following
 # strategies have been implemented:
 #
-## Basic: trend, stochastic, MACD, and candlestick pattern
+## MACD crossover: MACD
 #
 # Inputs:
 # tickers: list of tickers to be screened
@@ -917,61 +918,97 @@ def pattern_bearish_engulfing(df: pd.core.frame.DataFrame, confirmation: bool = 
 # signal_list: list of tickers for which a signal has been detected
 ################################################################################
 
-def screener_basic_long(tickers: list) -> list:
+def screener_MACD_crossover_long(tickers: list) -> list:
 
     signal_list = []
 
-    for ticker in tickers:
+    for ticker in tickers[0:100]:
 
             try:
                 df_ticker = yf.Ticker(ticker).history(period="200d").drop(["Dividends","Stock Splits"], axis = 1)
 
-                trend_signal, _ = check_trend(df_ticker)
-                stochastic_signal, _ = check_stochastic(df_ticker, 5, 5, 3)
-                macd_signal, _ = check_MACD(df_ticker, 12, 26, 9, False)
-                pattern_signal = detect_bullish_pattern(df_ticker, confirm = True)
-
-                signal = trend_signal and stochastic_signal and macd_signal and pattern_signal
+                signal, _ = check_MACD(df_ticker, 12, 26, 9, True)
 
                 if signal:
                     signal_list.append(ticker)
 
             except:
                 continue
+
+    Stock_lists.screened_stocks = signal_list
 
     return signal_list
 
-def screener_basic_short(tickers: list) -> list:
+def screener_MACD_crossover_short(tickers: list) -> list:
 
     signal_list = []
 
-    for ticker in tickers:
+    for ticker in tickers[0:100]:
 
             try:
                 df_ticker = yf.Ticker(ticker).history(period="200d").drop(["Dividends","Stock Splits"], axis = 1)
 
-                _, trend_signal = check_trend(df_ticker)
-                _, stochastic_signal = check_stochastic(df_ticker, 5, 5, 3)
-                _, macd_signal = check_MACD(df_ticker, 12, 26, 9, False)
-                pattern_signal = detect_bearish_pattern(df_ticker, confirm = True)
-
-                signal = trend_signal and stochastic_signal and macd_signal and pattern_signal
+                _, signal = check_MACD(df_ticker, 12, 26, 9, True)
 
                 if signal:
                     signal_list.append(ticker)
 
             except:
                 continue
+
+    Stock_lists.screened_stocks = signal_list
 
     return signal_list
 
 ################################################################################
 # ENTRY RULES
 #
-# BLABLABLA
+# These are the functions necessary to calculate the prices at which to place
+# the buy and sell (both stop and limit) orders for a given stock after a signal
+# has been detected
 ################################################################################
 
-def calculate_margin(price):
+################################################################################
+# Description: prints the details of a given order, namely the prices for the
+# buy/sell orders, and the position sizing details
+#
+# Inputs:
+# buy_stop: price at which to place buy stop order
+# buy_limit: price at which to place buy limit order
+# sell_stop: price at which to place sell stop order
+# sell_limit: price at which to place sell limit order
+# number_shares: number of shares to buy
+# position_size: total size of the position
+# total_risk: total risk of the position
+#
+# Outputs: None
+################################################################################
+
+def print_order_details(buy_stop: float, buy_limit: float, sell_stop: float, sell_limit: float, number_shares: float, position_size: float, total_risk: float):
+
+    print("The buy and sell orders should be placed at the following prices:")
+    print(f"Buy stop: {buy_stop}")
+    print(f"Buy limit: {buy_limit}")
+    print(f"Sell stop: {sell_stop}")
+    print(f"Sell limit: {sell_limit}")
+    print(" ")
+    print(f"Number of shares to buy: {number_shares}")
+    print(f"Total position size: {position_size}")
+    print(f"Total risk of position: {total_risk}")
+    print(" ")
+
+################################################################################
+# Description: calculates the adequate price margin to be considered when
+# placing an order for a stock with a given closing price
+#
+# Inputs:
+# price: latest closing price of the stock to be bought/sold
+#
+# Outputs:
+# order margin: price margin to be used in the orders
+################################################################################
+
+def calculate_margin(price: float) -> float:
 
     if price <= 5:
         order_margin = 0.01
@@ -989,3 +1026,263 @@ def calculate_margin(price):
         order_margin = 0.1
 
     return order_margin
+
+################################################################################
+# Description: calculates the prices at which the buy/sell stop/limit orders
+# should be placed based on the prices of the latest two days and the ATR
+#
+# Inputs:
+# df: dataframe containing stock data
+# profit_ratio: number of times the profit should surpass the risk
+#
+# Outputs:
+# buy_stop: price at which to place buy stop order
+# buy_limit: price at which to place buy limit order
+# sell_stop: price at which to place sell stop order
+# sell_limit: price at which to place sell limit order
+################################################################################
+
+def entry_rules_long(df: pd.core.frame.DataFrame, profit_ratio: float) -> (float, float, float, float):
+
+    df_work = df.copy()
+
+    df_work = average_true_range(df_work)
+    df_work["1D range"] = df_work.High - df_work.Low
+    df_work["2D range"] = df_work.High - df_work.shift().Low
+
+    df_work = df_work.tail(2)
+
+    order_margin = calculate_margin(df_work.iloc[1].Close)
+
+    buy_stop = df_work.iloc[1].High + order_margin
+    buy_limit = df_work.iloc[1].High + 2 * order_margin
+
+    if df_work.iloc[1]["1D range"] < df_work.iloc[1].ATR and df_work.iloc[1]["2D range"] < df_work.iloc[1].ATR * 1.5:
+        sell_stop = df_work.iloc[0].Low - order_margin
+    else:
+        sell_stop = df_work.iloc[1].Low - order_margin
+
+    sell_limit = buy_stop + profit_ratio * (buy_stop - sell_stop)
+
+    return buy_stop, buy_limit, sell_stop, sell_limit
+
+def entry_rules_short(df: pd.core.frame.DataFrame, profit_ratio: float) -> (float, float, float, float):
+
+    df_work = df.copy()
+
+    df_work = average_true_range(df_work)
+    df_work["1D range"] = df_work.High - df_work.Low
+    df_work["2D range"] = df_work.shift().High - df_work.Low
+
+    df_work = df_work.tail(2)
+
+    order_margin = calculate_margin(df_work.iloc[1].Close)
+
+    sell_stop = df_work.iloc[1].Low - order_margin
+    sell_limit = df_work.iloc[1].Low - 2 * order_margin
+
+    if df_work.iloc[1]["1D range"] < df_work.iloc[1].ATR and df_work.iloc[1]["2D range"] < df_work.iloc[1].ATR * 1.5:
+        buy_stop = df_work.iloc[0].High + order_margin
+    else:
+        buy_stop = df_work.iloc[1].High + order_margin
+
+    buy_limit = sell_stop - profit_ratio * (buy_stop - sell_stop)
+
+    return buy_stop, buy_limit, sell_stop, sell_limit
+
+################################################################################
+# Description: calculates the number of shares that should be bought/sell to
+# obtain a position with a certain risk and profit ratios for a given capital
+#
+# Inputs:
+# df: dataframe containing stock data
+# total_capital: total capital available for the position
+# profit_ratio: number of times the profit should surpass the risk
+# risk_ratio: percentage of the total capital to be risked
+#
+# Outputs:
+# number_shares: number of shares to buy
+# position_size: total size of the position
+# total_risk: total risk of the position
+################################################################################
+
+def position_sizing_long(df: pd.core.frame.DataFrame, total_capital: float, profit_ratio: float, risk_ratio: float) -> (float, float, float):
+
+    df_work = df.copy()
+
+    buy_stop, _, sell_stop, _ = entry_rules_long(df_work, profit_ratio)
+
+    number_shares = int(total_capital * 0.01 * risk_ratio / (buy_stop - sell_stop))
+    position_size = number_shares * buy_stop
+    total_risk = 0.01 * risk_ratio * total_capital
+
+    return number_shares, position_size, total_risk
+
+def position_sizing_short(df: pd.core.frame.DataFrame, total_capital: float, profit_ratio: float, risk_ratio: float) -> (float, float, float):
+
+    df_work = df.copy()
+
+    buy_stop, _, sell_stop, _ = entry_rules_short(df_work, profit_ratio)
+
+    number_shares = int(total_capital * 0.01 * risk_ratio / (buy_stop - sell_stop))
+    position_size = number_shares * sell_stop
+    total_risk = 0.01 * risk_ratio * total_capital
+
+    return number_shares, position_size, total_risk
+
+################################################################################
+# Description: calculates the prices at which the buy/sell stop/limit orders
+# should be placed, as well as the number of shares that should be bought/sold,
+# the total position size, and the total risk. Then, these details are printed
+#
+# Inputs:
+# ticker: ticker for the stock under analysis
+# total_capital: total capital available for the position
+# profit_ratio: number of times the profit should surpass the risk
+# risk_ratio: percentage of the total capital to be risked
+#
+# Outputs: None
+################################################################################
+
+def order_details_long(ticker: str, total_capital: float, profit_ratio: float, risk_ratio: float):
+
+    df_work = yf.Ticker(ticker).history(period="400d").drop(["Dividends","Stock Splits"], axis = 1)
+
+    buy_stop, buy_limit, sell_stop, sell_limit = entry_rules_long(df_work, profit_ratio)
+    number_shares, position_size, total_risk = position_sizing_long(df_work, total_capital, profit_ratio, risk_ratio)
+
+    print_order_details(buy_stop, buy_limit, sell_stop, sell_limit, number_shares, position_size, total_risk)
+
+def order_details_short(ticker: str, total_capital: float, profit_ratio: float, risk_ratio: float):
+
+    df_work = yf.Ticker(ticker).history(period="400d").drop(["Dividends","Stock Splits"], axis = 1)
+
+    buy_stop, buy_limit, sell_stop, sell_limit = entry_rules_short(df_work, profit_ratio)
+    number_shares, position_size, total_risk = position_sizing_short(df_work, total_capital, profit_ratio, risk_ratio)
+
+    print_order_details(buy_stop, buy_limit, sell_stop, sell_limit, number_shares, position_size, total_risk)
+
+################################################################################
+# Description: iterates through a list of tickers, ideally those who have been
+# previously screened, and returns the entry rules for each of the tickers in
+# the list.
+#
+# Inputs:
+# tickers: list containing stock tickers
+# total_capital: total capital available for the position
+# profit_ratio: number of times the profit should surpass the risk
+# risk_ratio: percentage of the total capital to be risked
+#
+# Outputs: None
+################################################################################
+
+def order_details_long_list(tickers: list, total_capital: float, profit_ratio: float, risk_ratio: float):
+
+    for ticker in tickers:
+
+        order_details_long(ticker, total_capital, profit_ratio, risk_ratio)
+
+def order_details_short_list(tickers: list, total_capital: float, profit_ratio: float, risk_ratio: float):
+
+    for ticker in tickers:
+
+        order_details_short(ticker, total_capital, profit_ratio, risk_ratio)
+
+################################################################################
+# BACKTESTING
+#
+# These are the functions necessary to backtest the strategies implemented and
+# calculate their success rate
+################################################################################
+
+def backtest_MACD_crossover_ticker(ticker: str, initial_capital: float, risk_ratio: float, profit_ratio: float) -> (float, float, float):
+
+    total_capital = initial_capital
+    number_trades = 0
+    wins = 0
+    losses = 0
+
+    longing = False
+    shorting = False
+    buy_order = False
+    sell_order = False
+
+    df_ticker = yf.Ticker(ticker).history(period="400d").drop(["Dividends","Stock Splits"], axis = 1)
+
+    for i in range(200):
+
+        try:
+
+            if longing:
+
+                if df_ticker.shift(200-i).iloc[400-1].Close > sell_limit:
+
+                    longing = False
+                    number_trades += 1
+                    wins += 1
+                    total_capital += number_shares * (sell_limit - buy_stop)
+
+                elif df_ticker.shift(200-i).iloc[400-1].Close < sell_stop:
+
+                    longing = False
+                    number_trades += 1
+                    losses += 1
+                    total_capital -= number_shares * (buy_stop - sell_stop)
+
+            if buy_order and i > order_instant + 2:
+                buy_order = False
+
+            if buy_order:
+
+                if df_ticker.shift(200-i).iloc[400-1].Close > buy_stop:
+
+                    buy_order = False
+                    longing = True
+
+
+            if not longing and not shorting and not buy_order and not sell_order:
+
+                macd_signal, _ = check_MACD(df_ticker.shift(200-i), 12, 26, 9, True)
+
+                if macd_signal:
+
+                    buy_order = True
+                    buy_stop, buy_limit, sell_stop, sell_limit = entry_rules_long(df_ticker.shift(200-i), profit_ratio)
+                    number_shares, _, _ = position_sizing_long(df_ticker.shift(200-i), total_capital, profit_ratio, risk_ratio)
+                    order_instant = i
+
+        except:
+            continue
+
+    return number_trades, wins, losses, total_capital
+
+def backtest_MACD_crossover(tickers: list, initial_capital: float, risk_ratio: float, profit_ratio: float):
+
+    total_capital = initial_capital
+    number_trades = 0
+    wins = 0
+    losses = 0
+
+    for ticker in tickers:
+
+        ticker_trades, ticker_wins, ticker_losses, ticker_capital = backtest_MACD_crossover_ticker(ticker, total_capital, risk_ratio, profit_ratio)
+        number_trades += ticker_trades
+        wins += ticker_wins
+        losses += ticker_losses
+        total_capital = ticker_capital
+
+    percentage_profit = (total_capital - initial_capital) / initial_capital * 100
+    success_rate = wins / number_trades * 100
+    average_profit = (profit_ratio * wins - risk_ratio * losses) / number_trades
+
+    print("Results:")
+    print(" ")
+    print(f"Number of trades: {number_trades}")
+    print(f"Wins: {wins}")
+    print(f"Losses: {losses}")
+    print(f"Success_rate: {success_rate}%")
+    print(f"Average profit per trade: {average_profit}%")
+    print(" ")
+    print(f"Initial capital: {initial_capital}")
+    print(f"Final capital: {total_capital}")
+    print(f"Profit percentage: {percentage_profit.round(1)}%")
