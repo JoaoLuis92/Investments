@@ -6,6 +6,7 @@ import numpy as np
 import yfinance as yf
 import pandas as pd
 import matplotlib.pyplot as plt
+import seaborn as sn
 
 ################################################################################
 # STOCK LISTS
@@ -431,6 +432,26 @@ def moving_average_convergence_divergence(df: pd.core.frame.DataFrame, macd_peri
     df_work["Signal"] = (df_work['MACD']).ewm(span = signal_period).mean()
 
     df_work = df_work.drop(columns = ["EMA" + str(macd_period_1), "EMA" + str(macd_period_2)])
+
+    return df_work
+
+################################################################################
+# Description: Computes the log returns and the cummulative log returns for the
+# data given as input
+#
+# Inputs:
+# df: dataframe containing stock data
+#
+# Outputs:
+# df_work: dataframe with additional columns with LR and CLR
+################################################################################
+
+def log_returns(df: pd.core.frame.DataFrame) -> pd.core.frame.DataFrame:
+
+    df_work = df.copy()
+
+    df_work["LR"] = np.log( df_work["Close"] / df_work["Close"].shift(1))
+    df_work["CLR"] = df_work["LR"].cumsum().apply(np.exp)
 
     return df_work
 
@@ -920,9 +941,12 @@ def pattern_bearish_engulfing(df: pd.core.frame.DataFrame, confirmation: bool = 
 
 def screener_MACD_crossover_long(tickers: list) -> list:
 
+    if not Market_analysis.long_bias:
+        print("It is not recommended to follow this strategy in the current market condition.")
+
     signal_list = []
 
-    for ticker in tickers[0:100]:
+    for ticker in tickers:
 
             try:
                 df_ticker = yf.Ticker(ticker).history(period="200d").drop(["Dividends","Stock Splits"], axis = 1)
@@ -941,9 +965,12 @@ def screener_MACD_crossover_long(tickers: list) -> list:
 
 def screener_MACD_crossover_short(tickers: list) -> list:
 
+    if not Market_analysis.short_bias:
+        print("It is not recommended to follow this strategy in the current market condition.")
+
     signal_list = []
 
-    for ticker in tickers[0:100]:
+    for ticker in tickers:
 
             try:
                 df_ticker = yf.Ticker(ticker).history(period="200d").drop(["Dividends","Stock Splits"], axis = 1)
@@ -959,6 +986,39 @@ def screener_MACD_crossover_short(tickers: list) -> list:
     Stock_lists.screened_stocks = signal_list
 
     return signal_list
+
+
+# MAYBE CREATE ANOTHER PACKAGE FOR VISUALIZATION?
+
+def closing_data(tickers: list) -> pd.core.frame.DataFrame:
+
+    df_work = pd.DataFrame()
+
+    for ticker in tickers:
+
+        df_ticker = yf.Ticker(ticker).history(period="200d").drop(["Dividends","Stock Splits"], axis = 1)
+
+        df_work[ticker] = df_ticker.Close
+
+    return df_work
+
+def compare_stocks(tickers: list):
+
+    df_work = closing_data(tickers)
+
+    df_work = np.log(df_work / df_work.shift(1)).cumsum().apply(np.exp)
+
+    plt.figure(figsize=(10, 5))
+
+    for ticker in tickers:
+
+        plt.plot(df_work[ticker], label=ticker)
+
+    plt.grid(linestyle=':')
+    plt.xlabel("Date")
+    plt.ylabel("Cumulative log returns")
+    plt.legend()
+    plt.show()
 
 ################################################################################
 # ENTRY RULES
@@ -1195,12 +1255,20 @@ def order_details_short_list(tickers: list, total_capital: float, profit_ratio: 
 # calculate their success rate
 ################################################################################
 
-def backtest_MACD_crossover_ticker(ticker: str, initial_capital: float, risk_ratio: float, profit_ratio: float) -> (float, float, float):
+def backtest_MACD_crossover_ticker(ticker: str, initial_capital: float, risk_ratio: float, profit_ratio: float, current_win_streak: int = 0,  current_loss_streak: int = 0,  current_longest_win_streak: int = 0,  current_longest_loss_streak: int = 0) -> (int, int, int, float, int, int, int, int):
 
     total_capital = initial_capital
     number_trades = 0
+
     wins = 0
     losses = 0
+
+    win_streak = current_win_streak
+    loss_streak = current_loss_streak
+
+    longest_win_streak = current_longest_win_streak
+    longest_loss_streak = current_longest_loss_streak
+
 
     longing = False
     shorting = False
@@ -1222,12 +1290,25 @@ def backtest_MACD_crossover_ticker(ticker: str, initial_capital: float, risk_rat
                     wins += 1
                     total_capital += number_shares * (sell_limit - buy_stop)
 
+                    if loss_streak > longest_loss_streak:
+                        longest_loss_streak = loss_streak
+
+                    win_streak += 1
+                    loss_streak = 0
+
+
                 elif df_ticker.shift(200-i).iloc[400-1].Close < sell_stop:
 
                     longing = False
                     number_trades += 1
                     losses += 1
                     total_capital -= number_shares * (buy_stop - sell_stop)
+
+                    if win_streak > longest_win_streak:
+                        longest_win_streak = win_streak
+
+                    win_streak = 0
+                    loss_streak += 1
 
             if buy_order and i > order_instant + 2:
                 buy_order = False
@@ -1238,7 +1319,6 @@ def backtest_MACD_crossover_ticker(ticker: str, initial_capital: float, risk_rat
 
                     buy_order = False
                     longing = True
-
 
             if not longing and not shorting and not buy_order and not sell_order:
 
@@ -1254,7 +1334,7 @@ def backtest_MACD_crossover_ticker(ticker: str, initial_capital: float, risk_rat
         except:
             continue
 
-    return number_trades, wins, losses, total_capital
+    return number_trades, wins, losses, total_capital, win_streak, loss_streak, longest_win_streak, longest_loss_streak
 
 def backtest_MACD_crossover(tickers: list, initial_capital: float, risk_ratio: float, profit_ratio: float):
 
@@ -1263,13 +1343,23 @@ def backtest_MACD_crossover(tickers: list, initial_capital: float, risk_ratio: f
     wins = 0
     losses = 0
 
+    win_streak = 0
+    loss_streak = 0
+
+    longest_win_streak = 0
+    longest_loss_streak = 0
+
     for ticker in tickers:
 
-        ticker_trades, ticker_wins, ticker_losses, ticker_capital = backtest_MACD_crossover_ticker(ticker, total_capital, risk_ratio, profit_ratio)
+        ticker_trades, ticker_wins, ticker_losses, ticker_capital, new_win_streak, new_loss_streak, new_longest_win_streak, new_longest_loss_streak = backtest_MACD_crossover_ticker(ticker, total_capital, risk_ratio, profit_ratio, win_streak, loss_streak, longest_win_streak, longest_loss_streak)
         number_trades += ticker_trades
         wins += ticker_wins
         losses += ticker_losses
         total_capital = ticker_capital
+        win_streak = new_win_streak
+        loss_streak = new_loss_streak
+        longest_win_streak = new_longest_win_streak
+        longest_loss_streak = new_longest_loss_streak
 
     percentage_profit = (total_capital - initial_capital) / initial_capital * 100
     success_rate = wins / number_trades * 100
@@ -1280,9 +1370,62 @@ def backtest_MACD_crossover(tickers: list, initial_capital: float, risk_ratio: f
     print(f"Number of trades: {number_trades}")
     print(f"Wins: {wins}")
     print(f"Losses: {losses}")
+    print(f"Longest winning streak: {longest_win_streak}")
+    print(f"Longest losing streak: {longest_loss_streak}")
     print(f"Success_rate: {success_rate}%")
     print(f"Average profit per trade: {average_profit}%")
     print(" ")
     print(f"Initial capital: {initial_capital}")
     print(f"Final capital: {total_capital}")
     print(f"Profit percentage: {percentage_profit.round(1)}%")
+
+################################################################################
+# DIVERSIFICATION
+#
+# These are the functions necessary to verify if there exists any type of
+# correlation between the stocks that have been screened. These functions allow
+# one to check if the screened stocks belong to the same sectors and also if
+# there has been a correlation in the closing prices in psat data
+################################################################################
+
+def verify_correlation(tickers: list) -> pd.core.frame.DataFrame:
+
+    df_close = pd.DataFrame()
+
+    for ticker in tickers:
+
+        df_ticker = yf.Ticker(ticker).history(period="200d").drop(["Dividends","Stock Splits"], axis = 1)
+
+        df_close[ticker] = df_ticker.Close
+
+    correlation_matrix = df_close.corr()
+
+    plt.figure(figsize = (20,10))
+    sn.diverging_palette(145, 300, s=60, as_cmap=True)
+    sn.heatmap(correlation_matrix, annot=True, cmap = "PiYG")
+    plt.show()
+
+    return correlation_matrix
+
+def verify_sector(tickers: list) -> dict:
+
+    sector_dict = {}
+
+    for ticker in tickers:
+
+        try:
+            ticker_object = yf.Ticker(ticker)
+            ticker_sector = ticker_object.info["sector"]
+
+            if ticker_sector not in sector_dict:
+
+                sector_dict[ticker_sector] = [ticker]
+
+            else:
+
+                sector_dict[ticker_sector].append(ticker)
+
+        except KeyError:
+            continue
+
+    return sector_dict
