@@ -38,8 +38,8 @@ class Stock_lists():
     @classmethod
     def import_stock_tickers(cls):
 
-        tickers_nasdaq = pd.read_csv("tickers_nasdaq.csv").Ticker.to_list()
-        tickers_nyse = pd.read_csv("tickers_nyse.csv").Ticker.to_list()
+        tickers_nasdaq = pd.read_csv("stock_lists/tickers_nasdaq.csv").Ticker.to_list()
+        tickers_nyse = pd.read_csv("stock_lists/tickers_nyse.csv").Ticker.to_list()
 
         cls.stock_tickers = tickers_nasdaq + tickers_nyse
 
@@ -55,9 +55,9 @@ class Stock_lists():
     @classmethod
     def import_stock_lists(cls):
 
-        cls.high_volume_stocks = pd.read_csv("high_volume_stocks.csv").Ticker.to_list()
-        cls.strong_stocks = pd.read_csv("strong_stocks.csv").Ticker.to_list()
-        cls.weak_stocks = pd.read_csv("weak_stocks.csv").Ticker.to_list()
+        cls.high_volume_stocks = pd.read_csv("stock_lists/high_volume_stocks.csv").Ticker.to_list()
+        cls.strong_stocks = pd.read_csv("stock_lists/strong_stocks.csv").Ticker.to_list()
+        cls.weak_stocks = pd.read_csv("stock_lists/weak_stocks.csv").Ticker.to_list()
 
 ################################################################################
 # Description: Filters through a list of stocks to select those with a volume
@@ -89,25 +89,6 @@ class Stock_lists():
         cls.high_volume_stocks = work_list
 
 ################################################################################
-# Description: Computes the relative change of the closing price of a stock in
-# a given time period of interest
-#
-# Inputs:
-# df: dataframe containing the stock data
-# period: time interval to be analyzed
-#
-# Outputs:
-# relative_change: value of the relative change of the stock
-################################################################################
-
-    @staticmethod
-    def stock_relative_change(df: pd.core.frame.DataFrame, period: int) -> float:
-
-        assert period > 0, f"Period {period} must be greater than zero"
-
-        return (df.tail(period).iloc[period-1].Close - df.tail(period).iloc[0].Close) / df.tail(period).iloc[0].Close
-
-################################################################################
 # Description: Filters through a list of tickers, compares the relative change
 # of each ticker with the relative change of the S&P500, and returns two lists
 # containing the tickers that are stronger and weaker with respect to the S&P500
@@ -127,13 +108,13 @@ class Stock_lists():
         work_strong_list = []
         work_weak_list = []
 
-        spx_change = cls.stock_relative_change(Market_analysis.spx_df, period)
+        spx_change = log_returns(Market_analysis.spx_df).CLR.iloc[period]
 
         for ticker in cls.high_volume_stocks:
 
             try:
                 stock_data = yf.Ticker(ticker).history(period="3mo")
-                stock_change = cls.stock_relative_change(stock_data, period)
+                stock_change = log_returns(stock_data).CLR.iloc[period]
 
                 if stock_change > spx_change:
                     work_strong_list.append(ticker)
@@ -157,14 +138,14 @@ class Stock_lists():
     @classmethod
     def export_high_volume_stocks(cls):
 
-        pd.DataFrame(Stock_lists.high_volume_stocks,columns=["Ticker"]).to_csv("high_volume_stocks.csv")
+        pd.DataFrame(Stock_lists.high_volume_stocks,columns=["Ticker"]).to_csv("stock_lists/high_volume_stocks.csv")
 
     @classmethod
     def export_relative_strength_stocks(cls):
 
-        pd.DataFrame(Stock_lists.strong_stocks,columns=["Ticker"]).to_csv("strong_stocks.csv")
-        pd.DataFrame(Stock_lists.weak_stocks,columns=["Ticker"]).to_csv("weak_stocks.csv")
-
+        pd.DataFrame(Stock_lists.strong_stocks,columns=["Ticker"]).to_csv("stock_lists/strong_stocks.csv")
+        pd.DataFrame(Stock_lists.weak_stocks,columns=["Ticker"]).to_csv("stock_lists/weak_stocks.csv")
+        
 ################################################################################
 # MARKET ANALYSIS
 #
@@ -315,6 +296,7 @@ class Market_analysis:
         plt.ylabel("Full Stochastic")
         plt.legend()
         plt.show()
+
 
 ################################################################################
 # FINANCIAL INDICATORS
