@@ -64,7 +64,7 @@ def backtest_MACD_crossover_ticker(ticker: str, initial_capital: float, risk_rat
     buy_order = False
     sell_order = False
 
-    df_ticker = yf.Ticker(ticker).history(period="400d").drop(["Dividends","Stock Splits"], axis = 1)
+    df_ticker = yf.Ticker(ticker).history(period="400d")
 
     for i in range(200):
 
