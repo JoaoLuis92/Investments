@@ -148,7 +148,7 @@ def log_returns(df: pd.core.frame.DataFrame) -> pd.core.frame.DataFrame:
 
     df_work = df.copy()
 
-    df_work["LR"] = np.log( df_work["Close"] / df_work["Close"].shift(1))
+    df_work["LR"] = np.log(df_work["Close"] / df_work["Close"].shift(1))
     df_work["CLR"] = df_work["LR"].cumsum().apply(np.exp)
 
     return df_work
@@ -265,4 +265,3 @@ def check_MACD(df: pd.core.frame.DataFrame, macd_period_1: int = 12, macd_period
     else:
 
         return Signal(macd_bullish, macd_bearish)
-

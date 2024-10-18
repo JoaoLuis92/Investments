@@ -5,7 +5,6 @@
 import numpy as np
 import yfinance as yf
 import pandas as pd
-from .market_analysis import Market_analysis
 from .financial_indicators import log_returns
 
 ################################################################################
@@ -80,7 +79,7 @@ class Stock_lists():
 
         work_list = []
 
-        for ticker in cls.stock_tickers[:10]:
+        for ticker in cls.stock_tickers:
 
             try:
                 if yf.Ticker(ticker).history(period="3mo").Volume.mean() > volume:
@@ -115,14 +114,14 @@ class Stock_lists():
 
         work_strong_list = []
         work_weak_list = []
+        period_str = str(period) + "d"
 
-        spx_change = log_returns(Market_analysis.spx_df).CLR.iloc[period]
+        spx_change = log_returns(yf.Ticker("^GSPC").history(period=period_str).drop(["Dividends","Stock Splits"], axis = 1)).tail(1).CLR.iloc[0]
 
         for ticker in cls.high_volume_stocks:
 
             try:
-                stock_data = yf.Ticker(ticker).history(period="3mo")
-                stock_change = log_returns(stock_data).CLR.iloc[period]
+                stock_change = log_returns(yf.Ticker(ticker).history(period=period_str)).tail(1).CLR.iloc[0]
 
                 if stock_change > spx_change:
                     work_strong_list.append(ticker)

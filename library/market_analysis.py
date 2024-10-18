@@ -122,16 +122,6 @@ class Market_analysis:
     @classmethod
     def plot_market_conditions(cls):
 
-        for period in [50, 100, 200]:
-            cls.spx_df = simple_moving_average(cls.spx_df, period)
-
-        for period in [20, 40]:
-            cls.spx_df = exponential_moving_average(cls.spx_df, period)
-
-        cls.spx_df = full_stochastic(cls.spx_df,5,3,3)
-
-        # First plot: SPX and moving averages
-
         plt.figure(figsize=(10, 5))
         plt.plot(cls.spx_df.tail(30).Close, 'k.-', label='S&P500')
         plt.plot(cls.spx_df.tail(30).EMA20, 'r--', label='EMA20')
