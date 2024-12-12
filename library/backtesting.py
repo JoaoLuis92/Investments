@@ -58,7 +58,6 @@ def backtest_MACD_crossover_ticker(ticker: str, initial_capital: float, risk_rat
     longest_win_streak = current_longest_win_streak
     longest_loss_streak = current_longest_loss_streak
 
-
     longing = False
     shorting = False
     buy_order = False
@@ -162,7 +161,7 @@ def backtest_MACD_crossover(tickers: list, initial_capital: float, risk_ratio: f
     Losses: {losses}
     Longest winning streak: {longest_win_streak}
     Longest losing streak: {longest_loss_streak}
-    Success_rate: {round(success_rate,1)}%
+    Success rate: {round(success_rate,1)}%
     Average profit per trade: {round(average_profit,1)}%
 
     Initial capital: {initial_capital}

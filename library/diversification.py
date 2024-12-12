@@ -108,7 +108,8 @@ class Diversification():
         cls.correlation_and_covariance()
 
         df_work = closing_data(cls.correlation_matrix.index).tail(30)
-        df_work = np.log(df_work / df_work.shift(1)).mean()
+        #df_work = np.log(df_work / df_work.shift(1)).mean()
+        df_work = np.log(df_work / df_work.shift(1)).cumsum().apply(np.exp).mean()
 
         for ticker in cls.correlation_matrix.index:
 
@@ -146,7 +147,8 @@ class Diversification():
         cls.verify_sector()
 
         df_work = closing_data(cls.diversified_stocks).tail(30)
-        df_work = np.log(df_work / df_work.shift(1)).mean()
+        #df_work = np.log(df_work / df_work.shift(1)).mean()
+        df_work = np.log(df_work / df_work.shift(1)).cumsum().apply(np.exp).mean()
 
         for sector in cls.sector_dict.keys():
 
